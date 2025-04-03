@@ -1,0 +1,11 @@
+POST /api/chat
+Content-Type: application/json
+
+{
+    "text": "Hello, how are you?"
+}
+
+POST /vfrd_api.php
+Content-Type: application/x-www-form-urlencoded
+
+text=Hello, how are you?
