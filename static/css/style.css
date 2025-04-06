@@ -1,0 +1,89 @@
+/* Base styles */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f7f9fc;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.container {
+    flex: 1;
+}
+
+/* Chat interface styles */
+.chat-container {
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.message {
+    max-width: 80%;
+    word-wrap: break-word;
+    position: relative;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.user-message {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.bot-message {
+    background-color: white;
+    border-left: 4px solid #4e73df;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.message {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* Admin dashboard styles */
+.card {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border: none;
+    border-radius: 8px;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.conversation-item.active {
+    background-color: #e7f1ff;
+    border-color: #4e73df;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .message {
+        max-width: 90%;
+    }
+}
+
+/* Button styles */
+.btn-primary {
+    background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+    border: none;
+    box-shadow: 0 2px 4px rgba(78, 115, 223, 0.4);
+    transition: all 0.2s;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(78, 115, 223, 0.5);
+}
+
+/* Animations for typing indicator */
+.typing-indicator span {
+    background-color: #4e73df;
+}

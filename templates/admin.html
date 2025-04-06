@@ -1,0 +1,188 @@
+{% extends 'base.html' %}
+
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block head %}
+<style>
+    .conversation-list {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    
+    .conversation-detail {
+        max-height: 500px;
+        overflow-y: auto;
+    }
+    
+    .user-message {
+        background-color: #e9ecef;
+        border-radius: 0.25rem;
+        padding: 0.75rem;
+        margin-bottom: 1rem;
+    }
+    
+    .bot-message {
+        background-color: #cfe2ff;
+        border-radius: 0.25rem;
+        padding: 0.75rem;
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>Admin Dashboard</h2>
+            <a href="/admin/logout" class="btn btn-outline-danger">Logout</a>
+        </div>
+        
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4 class="mb-0">Conversations</h4>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="list-group conversation-list">
+                            {% for conversation_id, messages in conversations.items() %}
+                                <a href="#" class="list-group-item list-group-item-action conversation-item" 
+                                   data-conversation-id="{{ conversation_id }}">
+                                    Conversation #{{ conversation_id }}
+                                    <span class="badge bg-primary rounded-pill">{{ messages|length }}</span>
+                                </a>
+                            {% else %}
+                                <div class="list-group-item">No conversations yet.</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="conversation-detail" id="conversation-detail">
+                            <div class="text-center text-muted">
+                                <p>Select a conversation to view details</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">System Stats</h4>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card text-white bg-primary mb-3">
+                            <div class="card-body">
+                                <h5 class="card-title">Total Conversations</h5>
+                                <p class="card-text display-4">{{ conversations|length }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card text-white bg-success mb-3">
+                            <div class="card-body">
+                                <h5 class="card-title">Total Messages</h5>
+                                {% set message_count = 0 %}
+                                {% for conversation_id, messages in conversations.items() %}
+                                    {% set message_count = message_count + messages|length %}
+                                {% endfor %}
+                                <p class="card-text display-4">{{ message_count }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card text-white bg-info mb-3">
+                            <div class="card-body">
+                                <h5 class="card-title">Active Today</h5>
+                                {% set today_count = 0 %}
+                                {% for conversation_id, messages in conversations.items() %}
+                                    {% set found = false %}
+                                    {% for message in messages %}
+                                        {% if not found %}
+                                            {% if message is mapping and 'timestamp' in message %}
+                                                {% if message['timestamp'].startswith(today_date) %}
+                                                    {% set today_count = today_count + 1 %}
+                                                    {% set found = true %}
+                                                {% endif %}
+                                            {% elif message.timestamp is defined %}
+                                                {% if message.timestamp.startswith(today_date) %}
+                                                    {% set today_count = today_count + 1 %}
+                                                    {% set found = true %}
+                                                {% endif %}
+                                            {% endif %}
+                                        {% endif %}
+                                    {% endfor %}
+                                {% endfor %}
+                                <p class="card-text display-4">{{ today_count }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    $(document).ready(function() {
+        // Handle conversation selection
+        $('.conversation-item').click(function(e) {
+            e.preventDefault();
+            
+            // Highlight selected conversation
+            $('.conversation-item').removeClass('active');
+            $(this).addClass('active');
+            
+            const conversationId = $(this).data('conversation-id');
+            
+            // Fetch conversation details
+            $.ajax({
+                url: `/api/conversations?id=${conversationId}`,
+                type: 'GET',
+                success: function(data) {
+                    if (!data || !data[conversationId] || data[conversationId].length === 0) {
+                        $('#conversation-detail').html('<div class="text-center text-muted"><p>No messages in this conversation</p></div>');
+                        return;
+                    }
+                    
+                    // Display conversation messages
+                    let html = '';
+                    const messages = data[conversationId];
+                    
+                    messages.forEach(function(message) {
+                        const timestamp = new Date(message.timestamp).toLocaleString();
+                        
+                        html += `
+                            <div class="user-message">
+                                <div class="d-flex justify-content-between">
+                                    <strong>User</strong>
+                                    <small>${timestamp}</small>
+                                </div>
+                                <p class="mb-0">${message.user}</p>
+                            </div>
+                            <div class="bot-message">
+                                <div class="d-flex justify-content-between">
+                                    <strong>Bot</strong>
+                                    <small>${timestamp}</small>
+                                </div>
+                                <p class="mb-0">${message.bot}</p>
+                            </div>
+                        `;
+                    });
+                    
+                    $('#conversation-detail').html(html);
+                },
+                error: function() {
+                    $('#conversation-detail').html('<div class="text-center text-danger"><p>Error loading conversation data</p></div>');
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}
