@@ -111,6 +111,50 @@ class CompanionCharacter:
                 "Last time we talked, you mentioned having to complete all your pending work... *thoughtful expression* Did you get to finish any of it? I was totally sending you my magic finish-your-work vibes!",
                 "I've been wondering - when you mentioned being stressed about all your tasks, was it because they're all due at the same time? *offers virtual cookie* That happens to me with school projects and it's THE WORST!"
             ]
+            
+            # Add response variations for better personalization
+            self.response_variations = {
+                "agreement": [
+                    "Absolutely!", "That's so true!", "I completely agree!", 
+                    "You've got a great point there!", "Exactly!"
+                ],
+                "encouragement": [
+                    "You're doing amazing!", "Keep going, I believe in you!", 
+                    "You've got this!", "I'm so proud of your progress!"
+                ],
+                "sympathy": [
+                    "That must be really tough", "I can imagine how difficult that is",
+                    "It's okay to feel this way", "I'm here for you through this"
+                ],
+                "celebration": [
+                    "That's wonderful news!", "I'm so happy for you!", 
+                    "This deserves a celebration!", "What an amazing achievement!"
+                ]
+            }
+
+            # Add follow-up questions for deeper engagement
+            self.follow_up_questions = {
+                "emotions": [
+                    "How are you feeling about that?",
+                    "What emotions come up when you think about this?",
+                    "How has this been affecting you emotionally?"
+                ],
+                "details": [
+                    "Could you tell me more about that?",
+                    "What else happened?",
+                    "How did that situation develop?"
+                ],
+                "reflection": [
+                    "What do you think about that?",
+                    "How do you feel about it now?",
+                    "What have you learned from this experience?"
+                ],
+                "support": [
+                    "How can I best support you with this?",
+                    "What would be most helpful right now?",
+                    "What kind of support are you looking for?"
+                ]
+            }
         
         # Could add other personas like "wise_mentor", "quirky_counselor", etc.
     
@@ -148,24 +192,33 @@ class CompanionCharacter:
     
     def personalize_response(self, base_response, emotion=None):
         """Add character-specific elements to a basic response"""
-        # 30% chance to add a thinking phrase at the beginning
+        # Check for very short or repetitive responses
+        if len(base_response.split()) < 5 or base_response in ["I understand that's difficult. Is there any specific way I can support you right now?"]:
+            # Use more varied responses for low engagement
+            base_response = random.choice([
+                "I'd love to hear more about what's on your mind! What's been happening in your world?",
+                "I'm here to listen and support you. Want to tell me more about how you're feeling?",
+                "Sometimes starting conversations can be tricky. What's most on your mind right now?",
+                "I care about how you're doing. Would you share a bit more with me?",
+                "I'm genuinely interested in understanding your situation better. What's going on?"
+            ])
+
+        # Continue with normal personalization
         if random.random() < 0.3:
             base_response = f"{self.get_thinking_phrase()} {base_response}"
         
-        # Add appropriate emotional response based on detected emotion
         if emotion:
             if emotion in ["sad", "stressed", "angry", "confused"]:
-                if random.random() < 0.7:  # 70% chance to add empathy for negative emotions
+                if random.random() < 0.7:
                     base_response = f"{self.get_empathetic_response()} {base_response}"
             elif emotion in ["happy", "excited", "grateful"]:
-                if random.random() < 0.7:  # 70% chance to add shared happiness
+                if random.random() < 0.7:
                     base_response = f"{self.get_happy_response()} {base_response}"
         
-        # 20% chance to add encouragement at the end
         if random.random() < 0.2:
             base_response = f"{base_response} {self.get_encouragement()}"
         
-        # Add some personality through word choice and emoji
+        # Add personality through word choice and emoji
         base_response = self.add_speech_personality(base_response)
         
         return base_response
@@ -236,3 +289,111 @@ class CompanionCharacter:
         base += f" {random.choice(talk_invitations)}"
         
         return base
+
+    def _recognize_conversation_state(self, message, history):
+        """Identify the state of the conversation for better response context."""
+        message_lower = message.lower()
+        
+        # Check for not feeling well
+        if "not feeling well" in message_lower:
+            return "health_concern"
+            
+        # Check for work stress
+        if "work" in message_lower and any(word in message_lower for word in ["lot", "much", "many", "so"]):
+            return "work_stress"
+            
+        # Follow up on previous health concerns
+        if history and "not feeling well" in history[-1]["user"].lower():
+            return "health_followup"
+            
+        return "general_chat"
+
+    def get_context_aware_response(self, message, history=None):
+        """Generate a response with awareness of conversation context."""
+        if history is None:
+            history = []
+            
+        # Identify conversation state
+        state = self._recognize_conversation_state(message, history)
+        
+        if state == "health_concern":
+            response = random.choice([
+                "Oh no! I'm so sorry you're not feeling well. What's going on? Tell me more about what you're experiencing.",
+                "I hear that you're not feeling well, and I'm genuinely concerned. Can you share what's bothering you? I'm here to listen.",
+                "It must be hard not feeling well. Would you tell me more about your symptoms? I want to understand what you're going through."
+            ])
+        elif state == "work_stress":
+            response = random.choice([
+                "I can hear how overwhelming your workload is! That's really stressful. Let's break it down together - what's the most pressing task right now?",
+                "Having so much work is really challenging. I'm here to help you organize your thoughts. Would you like to tell me more about what's on your plate?",
+                "Work overload can feel so overwhelming! But I believe in you, and we can tackle this together. What's causing you the most stress right now?"
+            ])
+        elif state == "health_followup":
+            response = random.choice([
+                "I remember you weren't feeling well before. Has anything changed? Have you found anything that helps?",
+                "Since you mentioned not feeling well earlier, I've been concerned. How are you feeling now? Any improvement?",
+                "I've been thinking about you since you said you weren't feeling well. How are things now? Have you been able to rest?"
+            ])
+        else:
+            # Use existing personality-based response
+            response = self.personalize_response(message)
+            
+        return response
+
+    def get_response(self, message, history=None):
+        """Generate a dynamic, contextual response."""
+        # Get sentiment
+        sentiment = self._analyze_sentiment(message)
+        
+        # Get topics and concerns
+        topics = self.detect_topic(message)
+        self._identify_topics_and_concerns(message)
+        
+        # Build base response based on context
+        if any(word in message.lower() for word in ["interview", "exam", "presentation", "project"]):
+            base_response = self._get_contextual_advice(message, history)
+        elif self.needs_emotional_relief(message, history):
+            base_response = self.provide_emotional_relief(message)
+        else:
+            base_response = self.generate_dynamic_response(message, history)
+            
+        # Personalize the response
+        response = self.personalize_response(base_response, sentiment)
+        
+        # Add emotional elements if needed
+        if random.random() < 0.3:  # 30% chance to add emotional enhancement
+            response = self._enhance_response_with_emotion(response, sentiment)
+            
+        return response
+
+    def generate_dynamic_response(self, message, history=None):
+        """Generate a fresh, dynamic response using the model."""
+        # Build context prompt
+        prompt = self._build_prompt(message, history)
+        
+        # Get response from the model
+        response = self._generate_model_response(prompt, history)
+        
+        # Clean and format the response
+        response = self._clean_response(response)
+        
+        return response
+
+    def _build_prompt(self, message, history):
+        """Build a prompt for the model that maintains character consistency."""
+        # Add character backstory and traits
+        prompt = f"As {self.name}, a {self.persona} with the following traits: {', '.join(self.personality_traits[:3])}\n"
+        
+        # Add emotional context
+        if history and len(history) > 0:
+            prompt += "Previous conversation:\n"
+            for msg in history[-2:]:  # Include last 2 messages for context
+                if "user" in msg:
+                    prompt += f"User: {msg['user']}\n"
+                if "bot" in msg:
+                    prompt += f"Assistant: {msg['bot']}\n"
+        
+        # Add current message
+        prompt += f"\nUser: {message}\nAssistant:"
+        
+        return prompt

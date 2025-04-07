@@ -249,98 +249,114 @@ class EmotionalCompanion:
         # Initialize character-based companion
         self.character = CompanionCharacter(name="Kozy", persona="supportive_friend")
 
-    def get_response(self, user_input, conversation_history=None):
-        """Generate a response to the user input with emotional awareness and character-based personality."""
-        if conversation_history is None:
-            conversation_history = []
+    def get_response(self, user_input, conversation_id=None, history=None):
+        """Enhanced response generation with better user need detection."""
+        try:
+            # Identify user's immediate needs
+            need_type = self._detect_user_needs(user_input, history)
             
-        # Extract and remember user information
-        self._extract_user_info(user_input)
-        
-        # Identify topics and concerns in the current message
-        self._identify_topics_and_concerns(user_input)
-        
-        # Check if this is a first-time conversation
-        is_new_conversation = len(conversation_history) < 1
-        
-        # Special handling for first conversation - show excitement to talk
-        if is_new_conversation:
-            return random.choice(self.character.human_desire_to_talk)
-        
-        # Check for indicators that the AI helped the user
-        helped_indicators = ["help", "helped", "helping", "useful", "thank", "thanks", "good advice", "nice", "great"]
-        user_mentioned_help = any(word in user_input.lower() for word in helped_indicators)
-        
-        # Check for specific previous conversation topics to reference
-        has_software_engineer = False
-        has_tasks = False
-        has_not_feeling_well = False
-        has_pending_work = False
-        
-        # Scan previous messages to find meaningful topics to reference
-        for i in range(min(len(conversation_history), 10)):
-            if "user" in conversation_history[i]:
-                msg = conversation_history[i]["user"].lower()
-                if any(word in msg for word in ["software", "engineer", "coding", "developer", "programming"]):
-                    has_software_engineer = True
-                if any(word in msg for word in ["task", "tasks", "todo", "to do", "to-do", "work"]):
-                    has_tasks = True  
-                if "not feeling well" in msg or ("not" in msg and "well" in msg):
-                    has_not_feeling_well = True
-                if any(word in msg for word in ["pending", "incomplete", "unfinished"]):
-                    has_pending_work = True
+            # Get targeted response if applicable
+            targeted_response = self._get_targeted_response(need_type, user_input)
+            if targeted_response:
+                return targeted_response
+                
+            # Generate dynamic response if no targeted response
+            return self.generate_dynamic_response(user_input, history)
             
-        # If the user mentioned the AI helped them, respond with enthusiasm
-        if user_mentioned_help:
-            return random.choice(self.character.excited_to_continue)
+        except Exception as e:
+            print(f"Error in get_response: {str(e)}")
+            return self._generate_engaging_response()
+
+    def _generate_contextual_response(self, user_input, history):
+        """Generate context-aware, supportive responses."""
+        input_lower = user_input.lower()
         
-        # For "not feeling well" or similar negative sentiments, provide empathy and continuity
-        if "not" in user_input.lower() and ("well" in user_input.lower() or "good" in user_input.lower()):
-            response = self.character.get_empathetic_response()
-            # Add a response continuation to show we're picking up the conversation
-            response += " " + random.choice(self.character.excited_to_continue)
-            return response
-            
-        # For very short messages, reference previous conversation topics
-        if len(user_input.split()) < 4:
-            # Pick an appropriate follow-up based on conversation history
-            if has_software_engineer:
-                return self.character.meaningful_follow_ups[1]  # Software engineer follow-up
-            elif has_tasks:
-                return self.character.meaningful_follow_ups[0]  # Tasks follow-up
-            elif has_not_feeling_well:
-                return self.character.meaningful_follow_ups[2]  # Not feeling well follow-up
-            elif has_pending_work:
-                return self.character.meaningful_follow_ups[3]  # Pending work follow-up
-            else:
-                # Generic continuation with enthusiasm
-                return random.choice(self.character.excited_to_continue)
+        # Detect stress and work-related issues
+        if any(word in input_lower for word in ["work", "task", "deadline"]) and \
+           any(word in input_lower for word in ["stress", "overwhelm", "too much", "lot"]):
+            return random.choice([
+                "I can hear how overwhelming your workload is right now. Let's break this down together - what's the most pressing task that's causing you stress? Sometimes tackling one thing at a time makes it all feel more manageable.",
+                "Having so much work can feel really suffocating. First, I want you to know that your stress is completely valid. Could you tell me more about these tasks? Often, just talking through them can help us find a way forward.",
+                "It sounds like you're carrying a heavy workload. Before we dive in, take a deep breath with me. Now, what's the task that's weighing on you the most? Let's start there and work through this together."
+            ])
+
+        # Detect general negative feelings
+        if any(word in input_lower for word in ["not well", "not good", "bad", "down", "stress"]):
+            return random.choice([
+                "I'm concerned about how you're feeling. Could you share what's been happening that's making you feel this way? I'm here to listen and support you through this.",
+                "It takes courage to admit when we're not feeling well. I want you to know that your feelings are valid, and I'm here for you. What's been the hardest part to deal with?",
+                "I hear that you're struggling, and I want you to know you don't have to carry this alone. Can you tell me more about what's been going on? Sometimes talking it through can help lighten the load."
+            ])
+
+        # Check conversation history for context
+        if history and len(history) > 0:
+            last_topics = self._extract_topics_from_history(history[-2:])
+            return self._generate_follow_up_response(last_topics, user_input)
+
+        return self._generate_engaging_response()
+
+    def _extract_topics_from_history(self, recent_history):
+        """Extract topics from recent conversation history."""
+        topics = set()
+        for turn in recent_history:
+            if "user" in turn:
+                user_message = turn["user"].lower()
+                if any(word in user_message for word in ["work", "task", "job"]):
+                    topics.add("work")
+                if any(word in user_message for word in ["stress", "anxiety", "overwhelm"]):
+                    topics.add("stress")
+                if any(word in user_message for word in ["not well", "not good", "sad", "down"]):
+                    topics.add("negative_feelings")
+        return topics
+
+    def _generate_follow_up_response(self, last_topics, current_input):
+        """Generate a response that maintains conversation context."""
+        if "work" in last_topics and "stress" in last_topics:
+            return random.choice([
+                "It sounds like this work situation is really affecting you. What would help you feel even a little bit more manageable right now? Sometimes even small changes can make a difference.",
+                "I can see how these work pressures are building up. You've been dealing with a lot. What's the most immediate support you need right now?",
+                "Managing work stress can be really challenging. What strategies have helped you cope with similar situations in the past? We can build on those together."
+            ])
+
+        if "negative_feelings" in last_topics:
+            return random.choice([
+                "I've been listening to how you're feeling, and I want you to know that it's okay to not be okay sometimes. What kind of support would be most helpful right now?",
+                "Given everything you've shared, it makes sense that you're feeling this way. What's one small thing we could focus on that might help you feel even slightly better?",
+                "Thank you for being open about your struggles. Is there something specific you'd like to talk through? I'm here to listen without judgment."
+            ])
+
+        return self._generate_engaging_response()
+
+    def _generate_engaging_response(self):
+        """Generate an engaging response when needed."""
+        return random.choice([
+            "I want to understand better what you're going through. Could you share more about what's on your mind?",
+            "I'm here to support you through this. What would be most helpful to talk about right now?",
+            "Your feelings matter to me. Could you tell me more about what's been happening?",
+            "I'm listening and I care about how you're feeling. What's weighing on you the most right now?"
+        ])
+
+    def _update_emotional_states(self, current_input, history):
+        """Update emotional state tracking based on conversation context."""
+        input_lower = current_input.lower()
         
-        # Analyze sentiment of user input
-        sentiment = self._analyze_sentiment(user_input)
-        sentiment_mapping = {"POSITIVE": "happy", "NEGATIVE": "sad", "NEUTRAL": None}
-        emotion = sentiment_mapping.get(sentiment)
-        
-        # Generate a base response
-        base_response = self._generate_model_response(user_input, conversation_history)
-        
-        # Make responses more conversational and human-like
-        response_options = [
-            # Option 1: Show enthusiasm and reference a previous topic
-            lambda: f"{random.choice(self.character.excited_to_continue)} {base_response}",
-            
-            # Option 2: Reference a specific previous conversation topic
-            lambda: random.choice(self.character.meaningful_follow_ups) if any([has_software_engineer, has_tasks, has_not_feeling_well, has_pending_work]) else base_response,
-            
-            # Option 3: Standard response with personality
-            lambda: self.character.personalize_response(base_response, emotion)
-        ]
-        
-        # Select a response option with weighted probability
-        weights = [0.3, 0.3, 0.4]  # 30% chance for each special response, 40% for standard
-        response_type = random.choices([0, 1, 2], weights=weights, k=1)[0]
-        
-        return response_options[response_type]()
+        # Update stress levels
+        if any(word in input_lower for word in ["stress", "overwhelm", "too much", "pressure"]):
+            self.emotional_states["stress"] += 2
+        else:
+            self.emotional_states["stress"] = max(0, self.emotional_states["stress"] - 1)
+
+        # Update anxiety levels
+        if any(word in input_lower for word in ["worry", "anxious", "nervous", "fear"]):
+            self.emotional_states["anxiety"] += 2
+        else:
+            self.emotional_states["anxiety"] = max(0, self.emotional_states["anxiety"] - 1)
+
+        # Update happiness levels
+        if any(word in input_lower for word in ["happy", "better", "good", "thank"]):
+            self.emotional_states["happiness"] += 1
+        elif any(word in input_lower for word in ["sad", "down", "bad", "not well"]):
+            self.emotional_states["happiness"] = max(0, self.emotional_states["happiness"] - 1)
     
     def _analyze_sentiment(self, text):
         """Analyze the sentiment of the input text."""
@@ -825,4 +841,73 @@ class EmotionalCompanion:
                 return random.choice(self.contextual_advice["feeling_overwhelmed"])
                 
         # If no specific contextual advice is applicable
+        return None
+
+    def generate_dynamic_response(self, message, history=None):
+        """Generate a fresh, dynamic response using the model."""
+        # Consider emotional context
+        sentiment = self._analyze_sentiment(message)
+        current_topics = self.detect_topic(message)
+        
+        # Check for urgent/immediate needs
+        if self._detect_severe_distress(message):
+            return random.choice(self.emergency_responses)
+            
+        # Check for specific scenarios that need targeted responses
+        if self.is_interview_exam_situation(message, history or []):
+            return random.choice(self.contextual_advice["interview_and_exam"])
+            
+        # Handle time management concerns
+        if "time_management" in self.current_concerns:
+            return random.choice(self.contextual_advice["time_management"])
+            
+        # Generate base response using the model
+        base_response = self._generate_model_response(message, history)
+        
+        # Enhance with emotional elements
+        response = self._enhance_response_with_emotion(base_response, sentiment)
+        
+        # Add follow-up question if appropriate
+        if random.random() < 0.7:  # 70% chance to add follow-up
+            response += " " + self._get_deep_engaging_question()
+            
+        return response
+
+    def _detect_user_needs(self, message, history=None):
+        """Analyze user message to determine their immediate needs."""
+        message_lower = message.lower()
+        
+        # Check for immediate emotional relief needed
+        if any(word in message_lower for word in ["stressed", "worried", "anxious", "overwhelmed", "panic"]):
+            return "emotional_relief"
+            
+        # Check for specific advice needed
+        if any(word in message_lower for word in ["advice", "help", "suggestion", "what should", "how do"]):
+            return "advice_needed"
+            
+        # Check for celebration/validation needed
+        if any(word in message_lower for word in ["happy", "excited", "achieved", "completed", "succeeded"]):
+            return "celebration"
+            
+        # Check for active listening needed
+        if len(message.split()) > 20:  # Longer messages often need active listening
+            return "active_listening"
+            
+        return "general_chat"
+
+    def _get_targeted_response(self, need_type, message):
+        """Generate a response targeted to the user's identified need."""
+        if need_type == "emotional_relief":
+            return random.choice(self.relief_statements.get(self._analyze_sentiment(message), 
+                               self.relief_statements["NEUTRAL"]))
+                               
+        elif need_type == "advice_needed":
+            return self._get_contextual_advice(message)
+            
+        elif need_type == "celebration":
+            return random.choice(self.emotional_responses["POSITIVE"])
+            
+        elif need_type == "active_listening":
+            return f"{random.choice(self.empathetic_transitions)} {self._get_deep_engaging_question()}"
+            
         return None

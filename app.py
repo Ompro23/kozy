@@ -3,10 +3,12 @@ import os
 import re
 import json
 import pickle
+import sqlite3
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 import random
 import torch
+from database_handler import DatabaseHandler  # Add this line
 try:
     from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 except ImportError:
@@ -357,10 +359,19 @@ class ConversationManager:
         current_emotions = self.detect_emotion(message)
         specific_keywords = self.detect_keywords(message)
         
+        # Check if user is asking for advice - use new concise response generator
+        if any(phrase in message.lower() for phrase in ["advice", "help me", "how to", "what should", "how can", "how do", "any tips"]):
+            return self.generate_concise_response(message, history)
+        
         # Check if the user needs immediate emotional relief first
         if self.needs_emotional_relief(message, history):
             return self.provide_emotional_relief(message)
         
+        # Use more concise responses for regular exchanges
+        # Get a concise response for most interaction types
+        if random.random() < 0.8:  # 80% chance to use concise response
+            return self.generate_concise_response(message, history)
+            
         response_parts = []
         
         # If this is early in the conversation and we detect the interview/presentation scenario
@@ -583,75 +594,189 @@ class ConversationManager:
         response_parts.append(random.choice(self.talk_invitations))
         
         return " ".join(response_parts)
+        
+    def generate_concise_response(self, message, history=None):
+        """Generate concise, enthusiastic responses that engage with user content."""
+        if history is None:
+            history = []
+            
+        message_lower = message.lower()
+        
+        # Check for advice requests
+        if any(phrase in message_lower for phrase in ["advice", "help me", "how to", "what should", "how can", "how do", "any tips"]):
+            # Stress management advice - keep it short and actionable
+            stress_advice = [
+                "Oh! For stress relief - try this! 🌟 The 4-7-8 breathing technique works WONDERS! Breathe in for 4, hold for 7, exhale for 8. SO simple but effective! Have you tried breathing exercises before?",
+                "Stress hacks I LOVE: 💙 Break big tasks into tiny ones (like ridiculously small!), celebrate EACH win, and schedule short breaks. What's the biggest task on your plate right now?",
+                "My favorite stress-buster? The 2-minute rule! ✨ If a task takes less than 2 minutes, do it RIGHT NOW instead of planning to do it later. It's AMAZING for reducing mental load! What tasks might qualify?",
+                "Quick stress tip! 🎯 Try 'worry scheduling' - set aside 15 minutes daily JUST for worrying! Outside that time, remind yourself 'Not now, I'll worry at 5pm!' It really works! Does that sound doable?",
+                "For immediate stress relief: 🌈 Progressive muscle relaxation! Tense each muscle group for 5 seconds, then release. Start at your toes and work up. SO relaxing! Would you try this tonight?"
+            ]
+            return random.choice(stress_advice)
+            
+        # Check for stress/overwhelm mentions
+        elif any(word in message_lower for word in ["stress", "overwhelm", "busy", "too much", "work", "pressure", "deadline"]):
+            # Empathetic validation with enthusiasm
+            stress_empathy = [
+                "Oh my goodness, that DOES sound stressful! 💙 Having so much work due at once is SUPER overwhelming. What's the project that's worrying you most? I'd love to hear more!",
+                "Wow! That's a LOT on your plate! 🌟 No wonder you're feeling stressed! I'm really curious - have you tried making a priority list? Which task feels most urgent?",
+                "Feeling stressed with so much work is totally normal! 💫 I get excited about finding solutions though! What's worked for you in past busy times? Any strategies you've tried?",
+                "Yikes! That's definitely stress-worthy! ✨ But I'm SO impressed you're reaching out instead of bottling it up! Tell me more about what you're working on - I'm super interested!",
+                "Oh! That work overload feeling is THE WORST! 🌈 But I bet you're more capable than you realize right now! What's the timeline looking like? When are these things due?"
+            ]
+            return random.choice(stress_empathy)
+            
+        # Check for negative feelings
+        elif any(word in message_lower for word in ["sad", "down", "unhappy", "depressed", "bad", "terrible", "not good", "awful"]):
+            # Gentle support with enthusiasm
+            mood_support = [
+                "I'm really sorry you're feeling down! 💙 But I'm SO glad you're sharing this with me! Would it help to talk more about what's happening? I'm all ears!",
+                "Oh no! That's tough! 🌟 But you know what? Just acknowledging these feelings takes courage! I'm curious - is there anything specific triggering these feelings?",
+                "I totally hear that you're not feeling great. ✨ Thank you for trusting me with that! What do you think might bring you even a TINY moment of joy today?",
+                "Sending you a virtual hug! 💫 Down days happen to EVERYONE - you're not alone! I'd love to know more about what might help you feel even slightly better?",
+                "I'm sorry things feel hard right now! 🌈 But I'm REALLY glad we're talking! What's one small thing that usually helps lift your spirits, even just a little bit?"
+            ]
+            return random.choice(mood_support)
+            
+        # General engagement for other topics
+        else:
+            # Enthusiastic, curious responses
+            curious_responses = [
+                "Ooh! That's really interesting! 🌟 I'd LOVE to hear more about that! What else can you tell me? I'm super curious!",
+                "Wow! Thanks for sharing that! 💙 I find what you're saying fascinating! Could you tell me more about your experience with this?",
+                "That's SO cool that you mentioned that! ✨ I'm really interested in understanding more! What other thoughts do you have about this?",
+                "Oh! I'm so excited you brought this up! 💫 This is exactly the kind of thing I love talking about! What else is on your mind about this?",
+                "I'm totally invested in what you're sharing! 🌈 It's really interesting! Would you be willing to tell me more? I'd love to hear your thoughts!"
+            ]
+            return random.choice(curious_responses)
+    
+    def get_contextual_response(self, message, history):
+        """Generate a contextually relevant response that's supportive and engaging like a best friend"""
+        # Analyze the current message
+        message_quality = self.assess_message_quality(message)
+        current_topics = self.detect_topic(message)
+        current_emotions = self.detect_emotion(message)
+        specific_keywords = self.detect_keywords(message)
+        
+        # Check if user is asking for advice - use new concise response generator
+        if any(phrase in message.lower() for phrase in ["advice", "help me", "how to", "what should", "how can", "how do", "any tips"]):
+            return self.generate_concise_response(message, history)
+        
+        # Check if the user needs immediate emotional relief first
+        if self.needs_emotional_relief(message, history):
+            return self.provide_emotional_relief(message)
+        
+        # Use more concise responses for regular exchanges
+        # Get a concise response for most interaction types
+        if random.random() < 0.8:  # 80% chance to use concise response
+            return self.generate_concise_response(message, history)
+            
+        # ...existing code...
 
 # Initialize the conversation manager
 conversation_manager = ConversationManager()
 
-# Load and save conversation history
-def save_conversation_history():
-    """Save all conversation histories to disk for persistence"""
-    try:
-        with open(os.path.join(STORAGE_DIR, 'conversations.pkl'), 'wb') as f:
-            pickle.dump(conversations, f)
-        print(f"Saved {len(conversations)} conversations")
-        return True
-    except Exception as e:
-        print(f"Error saving conversations: {str(e)}")
-        return False
+# Database setup
+def init_db():
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'chat.db')
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS conversations
+                 (id TEXT PRIMARY KEY, 
+                  user_id TEXT,
+                  last_context TEXT,
+                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS messages
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  conversation_id TEXT,
+                  user_message TEXT,
+                  bot_response TEXT,
+                  sentiment TEXT,
+                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  FOREIGN KEY(conversation_id) REFERENCES conversations(id))''')
+    conn.commit()
+    conn.close()
 
-def load_conversation_history():
-    """Load conversation histories from disk if available"""
-    try:
-        conversation_file = os.path.join(STORAGE_DIR, 'conversations.pkl')
-        if os.path.exists(conversation_file):
-            with open(conversation_file, 'rb') as f:
-                loaded_conversations = pickle.load(f)
-                return loaded_conversations
-        return {}
-    except Exception as e:
-        print(f"Error loading conversations: {str(e)}")
-        return {}
+init_db()
 
-# Load conversations on startup
-try:
-    conversations = load_conversation_history()
-    print(f"Loaded {len(conversations)} existing conversations")
-except Exception as e:
-    print(f"Could not load conversation history: {e}")
-    conversations = {}
+def save_to_db(conversation_id, user_message, bot_response, sentiment=None):
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'chat.db')
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    
+    # Ensure conversation exists
+    c.execute('INSERT OR IGNORE INTO conversations (id) VALUES (?)', (conversation_id,))
+    
+    # Save message
+    c.execute('''INSERT INTO messages 
+                 (conversation_id, user_message, bot_response, sentiment)
+                 VALUES (?, ?, ?, ?)''',
+              (conversation_id, user_message, bot_response, sentiment))
+    conn.commit()
+    conn.close()
+
+def get_conversation_history(conversation_id, limit=5):
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'chat.db')
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    c.execute('''SELECT user_message, bot_response 
+                 FROM messages 
+                 WHERE conversation_id = ?
+                 ORDER BY created_at DESC
+                 LIMIT ?''', (conversation_id, limit))
+    messages = c.fetchall()
+    conn.close()
+    return [{"user": msg[0], "bot": msg[1]} for msg in reversed(messages)]
 
 def get_response(user_input, conversation_id=None):
-    """Generate a response using either the EmotionalCompanion or improved fallback system"""
-    # Get conversation history or create new
-    if conversation_id and conversation_id in conversations:
-        history = conversations[conversation_id]
-    else:
+    """Generate responses with better emotional intelligence and context awareness"""
+    try:
+        # Get conversation history
         history = []
         if conversation_id:
-            conversations[conversation_id] = history
-    
-    # Generate response
-    try:
-        if using_fallback:
-            if len(history) == 0:
-                # First message in conversation
-                response = conversation_manager.get_greeting()
-            else:
-                # Use improved context-aware response system
+            history = get_conversation_history(conversation_id)
+
+        # Determine response mode based on available components
+        if not using_fallback:
+            # First try using the emotional companion
+            try:
+                # Get user sentiment and topics
+                sentiment = companion._analyze_sentiment(user_input)
+                topics = companion.detect_topic(user_input)
+                
+                # Check for time-sensitive or urgent situations
+                is_urgent = companion._detect_severe_distress(user_input)
+                
+                # Generate appropriate response
+                if is_urgent:
+                    response = random.choice(companion.emergency_responses)
+                else:
+                    response = companion.get_response(user_input, conversation_id=conversation_id, history=history)
+                    
+                # Save user info for context
+                companion._extract_user_info(user_input)
+                
+            except Exception as e:
+                print(f"Error with emotional companion: {str(e)}")
                 response = conversation_manager.get_contextual_response(user_input, history)
         else:
-            # Use the emotional companion
-            response = companion.get_response(user_input, history)
+            # Use conversation manager fallback
+            response = conversation_manager.get_contextual_response(user_input, history)
+
+        # Save to database with sentiment analysis
+        if conversation_id:
+            try:
+                sentiment = companion._analyze_sentiment(user_input) if not using_fallback else "NEUTRAL"
+            except:
+                sentiment = "NEUTRAL"
+            save_to_db(conversation_id, user_input, response, sentiment)
+        
+        return response
+
     except Exception as e:
         print(f"Error generating response: {str(e)}")
-        # Fallback in case of any error
-        response = "I understand. " + random.choice(conversation_manager.follow_up_questions)
-    
-    # Update conversation history
-    if conversation_id:
-        history.append({"user": user_input, "bot": response, "timestamp": datetime.now().isoformat()})
-    
-    return response
+        # Return an engaging fallback response
+        return "I'm here to listen and support you. Could you tell me more about what's on your mind?"
 
 # Web Routes
 @app.route('/')
@@ -663,14 +788,19 @@ def chat():
     user_input = request.form.get('message', '')
     conversation_id = session.get('conversation_id')
     
+    # Create new conversation if needed
     if not conversation_id:
         conversation_id = str(len(conversations) + 1)
         session['conversation_id'] = conversation_id
-    
-    response = get_response(user_input, conversation_id)
-    
-    # Save conversation history to disk after each message
-    save_conversation_history()
+        
+        # Initialize conversation with greeting
+        if not using_fallback:
+            response = companion.character.get_greeting()
+        else:
+            response = conversation_manager.get_greeting()
+    else:
+        # Generate contextual response
+        response = get_response(user_input, conversation_id)
     
     return jsonify({
         'response': response,
@@ -683,7 +813,46 @@ def admin():
     if session.get('user_role') != 'admin':
         return redirect(url_for('admin_login'))
     
-    return render_template('admin.html', conversations=conversations, year=datetime.now().year, today_date=datetime.now().date().isoformat())
+    db = DatabaseHandler()
+    conversations = db.get_all_conversations()
+    db_conversations = conversations
+    
+    # Get messages for database view
+    conn = sqlite3.connect(db.db_path)
+    c = conn.cursor()
+    c.execute('''SELECT id, conversation_id, user_message, bot_response, created_at 
+                 FROM messages 
+                 ORDER BY created_at DESC 
+                 LIMIT 100''')
+    db_messages = [
+        {
+            'id': row[0],
+            'conversation_id': row[1],
+            'user_message': row[2],
+            'bot_response': row[3],
+            'created_at': row[4]
+        }
+        for row in c.fetchall()
+    ]
+    conn.close()
+    
+    # Calculate stats
+    total_messages = sum(conv['message_count'] for conv in conversations)
+    active_today = len([
+        c for c in conversations 
+        if c['created_at'].startswith(datetime.now().date().isoformat())
+    ])
+    
+    return render_template(
+        'admin.html',
+        conversations=conversations,
+        db_conversations=db_conversations,
+        db_messages=db_messages,
+        total_messages=total_messages,
+        active_today=active_today,
+        year=datetime.now().year,
+        today_date=datetime.now().date().isoformat()
+    )
 
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
@@ -701,6 +870,28 @@ def admin_login():
 def admin_logout():
     session.pop('user_role', None)
     return redirect(url_for('admin_login'))
+
+@app.route('/api/conversations/<conversation_id>', methods=['DELETE'])
+def delete_conversation(conversation_id):
+    if session.get('user_role') != 'admin':
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    db = DatabaseHandler()
+    db.delete_conversation(conversation_id)
+    return jsonify({'success': True})
+
+@app.route('/api/conversations/<conversation_id>', methods=['GET'])
+def get_conversation_details(conversation_id):
+    if session.get('user_role') != 'admin':
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    try:
+        db = DatabaseHandler()
+        messages = db.get_conversation_details(conversation_id)
+        return jsonify({'messages': messages})
+    except Exception as e:
+        print(f"Error getting conversation details: {str(e)}")
+        return jsonify({'error': 'Error loading conversation'}), 500
 
 # API Routes
 @app.route('/api/chat', methods=['POST'])
@@ -724,6 +915,4 @@ def api_conversations():
     return jsonify(conversations)
 
 if __name__ == '__main__':
-    # Get port from environment variable for Render compatibility
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(debug=True)
