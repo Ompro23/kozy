@@ -1,0 +1,7 @@
+flask==2.3.3
+pyrebase4==4.7.1
+torch==2.0.1
+transformers==4.33.1
+python-dotenv==1.0.0
+sentencepiece==0.1.99
+accelerate==0.22.0
