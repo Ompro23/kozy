@@ -404,7 +404,7 @@ Now, formulate your response as Kozy:
                     return random.choice(crisis_responses)
                 
                 # New: Handling for "not feeling well" with more personality
-                if any(phrase in message_lower for phrase in ["not feeling well", "feel sick", "feeling bad", "feel terrible"]):
+                if any(phrase in message_lower for phrase in ["not feeling well", "feel sick", "feeling bad", "not good", "terrible", "awful"]):
                     unwell_responses = [
                         ["I'm sorry you're not feeling well today. That's really tough, especially when you have other things you want or need to do.",
                          "Sometimes just having someone acknowledge that you're struggling can help a tiny bit. So consider me officially in your corner!",
@@ -823,4 +823,4 @@ def get_next_message():
         return jsonify({"error": "Error processing message", "done": True})
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=7000)

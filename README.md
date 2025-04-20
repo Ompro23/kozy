@@ -1,52 +1,29 @@
-# KOZY - Smart Emotional Companion
+# Kozy - Your Emotional AI Companion
 
-KOZY is a Flask-based emotional companion chatbot that provides empathetic responses to users. The application integrates with Firebase for data storage and Hugging Face for AI-powered conversations.
+Kozy is an emotional AI companion chatbot designed to provide empathetic responses and create a supportive conversation environment.
 
 ## Features
 
-- User authentication with Firebase UID
-- Real-time chat interface
-- AI-powered responses using Hugging Face models
-- Persistent chat storage in Firebase Realtime Database
-- Session-based conversations with fresh starts for each session
+- Personalized emotional support with natural conversational flow
+- Context-aware responses that acknowledge specific topics
+- Handles spelling mistakes and typos
+- Multi-part message responses for natural conversation pacing
+- Specialized responses for different emotional situations
 
-## Setup Instructions
+## Technical Details
 
-### Prerequisites
+- Built with Flask and runs on port 7000
+- Uses Firebase for data storage
+- Implements both LLM-based and rule-based response generation
+- Includes sophisticated error handling and fallback mechanisms
 
-- Python 3.8 or higher
-- pip (Python package installer)
-- Firebase account with Realtime Database set up
+## Running the Application
 
-### Installation
+1. Install the required dependencies
+2. Set up Firebase configuration
+3. Run with `python app.py`
+4. Access the application at `http://localhost:7000`
 
-1. Clone the repository or download the source code
+## Usage
 
-2. Install the required dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-
-3. The Firebase configuration is already included in the app.py file. If you want to use your own Firebase project, replace the configuration in app.py.
-
-4. Run the application:
-   ```
-   python app.py
-   ```
-
-5. Open your web browser and navigate to:
-   ```
-   http://127.0.0.1:5000/
-   ```
-
-### Usage
-
-1. Enter your Firebase UID on the login page
-2. Start chatting with KOZY
-3. Your conversations will be stored in the Firebase Realtime Database under your UID
-
-## Data Structure
-
-The application stores chat data in Firebase with the following structure:
-
-# kozy
+Login with your Firebase UID to start chatting with Kozy. The interface is designed to be simple and intuitive, allowing you to focus on the conversation.
