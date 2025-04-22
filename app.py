@@ -754,82 +754,27 @@ def send_message():
         else:
             # Try personality-driven response first with enhanced context awareness
             try:
-                # Track important conversation context
-                if 'important_context' not in session:
-                    session['important_context'] = {
-                        'achievements': [],
-                        'problems': [],
-                        'topics': {},
-                        'last_topic': None
-                    }
+                # Get app feature recommendation if appropriate, passing chat history for context
+                suggested_feature = knowledge_base.get_app_feature(
+                    user_emotion, 
+                    user_message,
+                    chat_history  # Pass chat history for context-aware suggestions
+                )
                 
-                # Extract important information from user message
-                achievement_keywords = ["promotion", "promoted", "new job", "cto", "ceo", "manager", "lead", "award", "success"]
-                problem_keywords = ["issue", "problem", "difficult", "hard", "struggle", "worried", "anxiety", "stress"]
+                # Get emotion-appropriate personality response with chat history context
+                personality_response = knowledge_base.get_personality_response(
+                    user_message, 
+                    user_emotion, 
+                    suggested_feature,
+                    chat_history  # Pass chat history for personalized responses
+                )
                 
-                # Check for achievements or problems in current message
-                user_msg_lower = user_message.lower()
-                
-                # Check if the message mentions an achievement
-                for keyword in achievement_keywords:
-                    if keyword in user_msg_lower:
-                        if keyword not in session['important_context']['achievements']:
-                            session['important_context']['achievements'].append(keyword)
-                            session['important_context']['last_topic'] = 'achievement'
-                
-                # Check if the message mentions a problem
-                for keyword in problem_keywords:
-                    if keyword in user_msg_lower:
-                        if keyword not in session['important_context']['problems']:
-                            session['important_context']['problems'].append(keyword)
-                            session['important_context']['last_topic'] = 'problem'
-                
-                # Check if this is a follow-up to previous context
-                contextual_response = None
-                if len(chat_history) >= 2:
-                    last_exchange = chat_history[-1]
-                    # If the last message mentioned an achievement and this is a confirmation
-                    if (session['important_context']['last_topic'] == 'achievement' and 
-                        any(word in user_msg_lower for word in ["yes", "yeah", "correct", "right", "hard work", "hardwork", "work"])):
-                        
-                        achievement_responses = [
-                            "That's amazing! All those years of hard work have clearly paid off with your promotion to CTO. What aspect of the new role excites you the most?",
-                            "Your dedication really shows - becoming CTO is a huge accomplishment! What's the first thing you want to tackle in your new position?",
-                            "Congratulations again on becoming CTO! That kind of commitment deserves recognition. How have others reacted to your promotion?"
-                        ]
-                        contextual_response = [random.choice(achievement_responses)]
-                
-                # Track conversation turn for varying response styles
-                if 'conversation_turn' not in session:
-                    session['conversation_turn'] = 0
-                session['conversation_turn'] += 1
-                
-                # Use contextual response if available, otherwise generate normal response
-                if contextual_response:
-                    kozy_response = contextual_response
+                # If we have a good personality response, use it
+                if personality_response and len(personality_response) > 0:
+                    kozy_response = personality_response
                 else:
-                    # Get app feature recommendation if appropriate
-                    suggested_feature = knowledge_base.get_app_feature(
-                        user_emotion, 
-                        user_message,
-                        chat_history
-                    )
-                    
-                    # Get emotion-appropriate personality response
-                    personality_response = knowledge_base.get_personality_response(
-                        user_message, 
-                        user_emotion, 
-                        suggested_feature,
-                        chat_history,
-                        important_context=session.get('important_context')  # Pass important context
-                    )
-                    
-                    # If we have a good personality response, use it
-                    if personality_response and len(personality_response) > 0:
-                        kozy_response = personality_response
-                    else:
-                        # Fall back to LLM or rule-based
-                        kozy_response = get_kozy_response(user_message, chat_history)
+                    # Fall back to LLM or rule-based
+                    kozy_response = get_kozy_response(user_message, chat_history)
                 
                 # Debug: Print out the response type and content
                 print(f"Response type: {type(kozy_response)}")
