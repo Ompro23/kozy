@@ -101,6 +101,12 @@
             padding: 8px 15px;
             margin-bottom: 15px;
         }
+        /* New style for the typing indicator container */
+        #typing-indicator-container {
+            display: none;
+            align-self: flex-start;
+            margin-bottom: 15px;
+        }
         .typing-dot {
             display: inline-block;
             width: 8px;
@@ -143,6 +149,52 @@
             font-size: 14px;
             display: none;
         }
+        /* Add new styles for emotion indicators */
+        .emotion-indicator {
+            font-size: 12px;
+            margin-bottom: 5px;
+            color: #777;
+            font-style: italic;
+        }
+        
+        /* Emotion-specific message styling */
+        .message.emotion-happy {
+            background-color: #e9ffed;
+        }
+        .message.emotion-sad {
+            background-color: #f0f6ff;
+        }
+        .message.emotion-angry {
+            background-color: #fff0f0;
+        }
+        .message.emotion-fear {
+            background-color: #f6f0ff;
+        }
+        .message.emotion-excited {
+            background-color: #fffae0;
+        }
+        .message.emotion-bored {
+            background-color: #f5f5f5;
+        }
+        
+        .resource-card {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 12px;
+            padding: 12px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        .resource-title {
+            font-weight: bold;
+            color: #4a6fa5;
+        }
+        .resource-link {
+            display: block;
+            margin-top: 5px;
+            color: #4a6fa5;
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -158,11 +210,6 @@
                 {% endif %}
                 <div class="message kozy-message">{{ message.kozy }}</div>
             {% endfor %}
-            <div class="typing-indicator" id="typing-indicator">
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-            </div>
         </div>
         <div class="chat-input">
             <div class="input-group">
@@ -221,85 +268,70 @@
             scrollToBottom();
             messageInput.focus();
             
-            // Process pending messages
-            function processNextMessage() {
-                if (isKozyTyping) return;
+            // Enhanced message display function with emotion support
+            function displayMessage(message, type, emotion = null) {
+                const messageDiv = document.createElement('div');
+                messageDiv.classList.add('message', type);
                 
-                isKozyTyping = true;
-                typingIndicator.style.display = 'block';
+                // Add emotion-specific styling if available
+                if (emotion && type === 'kozy-message') {
+                    messageDiv.classList.add(`emotion-${emotion}`);
+                    
+                    // Add subtle emotion indicator for Kozy's responses
+                    if (['sad', 'fear', 'angry'].includes(emotion)) {
+                        const emotionIndicator = document.createElement('div');
+                        emotionIndicator.classList.add('emotion-indicator');
+                        emotionIndicator.textContent = `Responding to: ${emotion} tone`;
+                        chatMessages.appendChild(emotionIndicator);
+                    }
+                }
+                
+                // Check if the message contains a resource link
+                if (typeof message === 'string' && message.includes('resource that might help')) {
+                    // Extract resource information
+                    const resourceMatch = message.match(/resource that might help: (.*?) - (.*?)\. You can check it out at (https?:\/\/\S+)/);
+                    
+                    if (resourceMatch) {
+                        const [_, resourceName, resourceDesc, resourceUrl] = resourceMatch;
+                        
+                        // Create a normal message with the introductory text
+                        messageDiv.textContent = "I found a resource that might help you:";
+                        
+                        // Create a resource card
+                        const resourceCard = document.createElement('div');
+                        resourceCard.classList.add('resource-card');
+                        
+                        const resourceTitle = document.createElement('div');
+                        resourceTitle.classList.add('resource-title');
+                        resourceTitle.textContent = resourceName;
+                        
+                        const resourceDescription = document.createElement('div');
+                        resourceDescription.textContent = resourceDesc;
+                        
+                        const resourceLink = document.createElement('a');
+                        resourceLink.classList.add('resource-link');
+                        resourceLink.href = resourceUrl;
+                        resourceLink.target = '_blank';
+                        resourceLink.textContent = "Visit Resource";
+                        
+                        resourceCard.appendChild(resourceTitle);
+                        resourceCard.appendChild(resourceDescription);
+                        resourceCard.appendChild(resourceLink);
+                        
+                        // Add the resource card to the message
+                        messageDiv.appendChild(resourceCard);
+                    } else {
+                        messageDiv.textContent = message;
+                    }
+                } else {
+                    messageDiv.textContent = message;
+                }
+                
+                chatMessages.appendChild(messageDiv);
                 scrollToBottom();
-                
-                fetch('/get_next_message')
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error('Network response error');
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        debug('Next message response: ' + JSON.stringify(data));
-                        
-                        if (data.error) {
-                            throw new Error(data.error);
-                        }
-                        
-                        if (data.done) {
-                            typingIndicator.style.display = 'none';
-                            isKozyTyping = false;
-                            messageInput.disabled = false;
-                            sendButton.disabled = false;
-                            messageInput.focus();
-                            return;
-                        }
-                        
-                        // Wait for typing delay
-                        const typingDelay = data.typing_delay || 1000;
-                        
-                        setTimeout(() => {
-                            // Hide typing indicator and add message
-                            typingIndicator.style.display = 'none';
-                            
-                            if (data.response) {
-                                const messageDiv = document.createElement('div');
-                                messageDiv.classList.add('message', 'kozy-message');
-                                messageDiv.textContent = data.response;
-                                chatMessages.appendChild(messageDiv);
-                                scrollToBottom();
-                            }
-                            
-                            // If more messages, process after a short delay
-                            if (data.has_more) {
-                                setTimeout(() => {
-                                    isKozyTyping = false;
-                                    processNextMessage();
-                                }, 700);
-                            } else {
-                                isKozyTyping = false;
-                                messageInput.disabled = false;
-                                sendButton.disabled = false;
-                                messageInput.focus();
-                            }
-                        }, typingDelay);
-                    })
-                    .catch(error => {
-                        debug('Error in processNextMessage: ' + error.message);
-                        typingIndicator.style.display = 'none';
-                        isKozyTyping = false;
-                        messageInput.disabled = false;
-                        sendButton.disabled = false;
-                        
-                        // Retry logic
-                        if (retryCount < MAX_RETRIES) {
-                            retryCount++;
-                            setTimeout(processNextMessage, 1000);
-                        } else {
-                            retryCount = 0;
-                            showStatus('Connection error. Please try again.');
-                        }
-                    });
             }
             
-            // Send message function
+            // Override send message function
             function sendMessage() {
                 const message = messageInput.value.trim();
                 
@@ -308,10 +340,7 @@
                 }
                 
                 // Add user message to display
-                const userDiv = document.createElement('div');
-                userDiv.classList.add('message', 'user-message');
-                userDiv.textContent = message;
-                chatMessages.appendChild(userDiv);
+                displayMessage(message, 'user-message');
                 
                 // Clear input and show typing
                 messageInput.value = '';
@@ -319,7 +348,18 @@
                 sendButton.disabled = true;
                 isKozyTyping = true;
                 
-                typingIndicator.style.display = 'block';
+                // Create and add typing indicator after the user message
+                const typingIndicatorDiv = document.createElement('div');
+                typingIndicatorDiv.classList.add('typing-indicator');
+                typingIndicatorDiv.id = 'current-typing-indicator';
+                typingIndicatorDiv.innerHTML = `
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                `;
+                chatMessages.appendChild(typingIndicatorDiv);
+                typingIndicatorDiv.style.display = 'block';
+                
                 scrollToBottom();
                 
                 // Send to server
@@ -339,18 +379,21 @@
                 .then(data => {
                     debug('Send message response: ' + JSON.stringify(data));
                     
+                    // Get emotion if available
+                    const emotion = data.emotion || null;
+                    
                     // Random typing delay (500-1500ms)
                     const typingDelay = 500 + Math.floor(Math.random() * 1000);
                     
                     setTimeout(() => {
-                        typingIndicator.style.display = 'none';
+                        // Remove the typing indicator
+                        const currentIndicator = document.getElementById('current-typing-indicator');
+                        if (currentIndicator) {
+                            currentIndicator.remove();
+                        }
                         
-                        // Add Kozy's response
-                        const kozyDiv = document.createElement('div');
-                        kozyDiv.classList.add('message', 'kozy-message');
-                        kozyDiv.textContent = data.response;
-                        chatMessages.appendChild(kozyDiv);
-                        scrollToBottom();
+                        // Add Kozy's response with emotion
+                        displayMessage(data.response, 'kozy-message', emotion);
                         
                         // Check for more messages
                         if (data.has_more) {
@@ -368,12 +411,118 @@
                 })
                 .catch(error => {
                     debug('Error in sendMessage: ' + error.message);
-                    typingIndicator.style.display = 'none';
+                    // Remove typing indicator on error
+                    const currentIndicator = document.getElementById('current-typing-indicator');
+                    if (currentIndicator) {
+                        currentIndicator.remove();
+                    }
+                    
                     isKozyTyping = false;
                     messageInput.disabled = false;
                     sendButton.disabled = false;
                     showStatus('Error sending message. Please try again.');
                 });
+            }
+            
+            // Updated process next message function with dynamic typing indicator
+            function processNextMessage() {
+                if (isKozyTyping) return;
+                
+                isKozyTyping = true;
+                
+                // Create and add typing indicator
+                const typingIndicatorDiv = document.createElement('div');
+                typingIndicatorDiv.classList.add('typing-indicator');
+                typingIndicatorDiv.id = 'current-typing-indicator';
+                typingIndicatorDiv.innerHTML = `
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                `;
+                chatMessages.appendChild(typingIndicatorDiv);
+                typingIndicatorDiv.style.display = 'block';
+                
+                scrollToBottom();
+                
+                fetch('/get_next_message')
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response error');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        debug('Next message response: ' + JSON.stringify(data));
+                        
+                        if (data.error) {
+                            throw new Error(data.error);
+                        }
+                        
+                        if (data.done) {
+                            // Remove typing indicator
+                            const currentIndicator = document.getElementById('current-typing-indicator');
+                            if (currentIndicator) {
+                                currentIndicator.remove();
+                            }
+                            isKozyTyping = false;
+                            messageInput.disabled = false;
+                            sendButton.disabled = false;
+                            messageInput.focus();
+                            return;
+                        }
+                        
+                        // Get emotion if available
+                        const emotion = data.emotion || null;
+                        
+                        // Wait for typing delay
+                        const typingDelay = data.typing_delay || 1000;
+                        
+                        setTimeout(() => {
+                            // Remove typing indicator
+                            const currentIndicator = document.getElementById('current-typing-indicator');
+                            if (currentIndicator) {
+                                currentIndicator.remove();
+                            }
+                            
+                            if (data.response) {
+                                // Display message with emotion
+                                displayMessage(data.response, 'kozy-message', emotion);
+                            }
+                            
+                            // If more messages, process after a short delay
+                            if (data.has_more) {
+                                setTimeout(() => {
+                                    isKozyTyping = false;
+                                    processNextMessage();
+                                }, 700);
+                            } else {
+                                isKozyTyping = false;
+                                messageInput.disabled = false;
+                                sendButton.disabled = false;
+                                messageInput.focus();
+                            }
+                        }, typingDelay);
+                    })
+                    .catch(error => {
+                        debug('Error in processNextMessage: ' + error.message);
+                        // Remove typing indicator
+                        const currentIndicator = document.getElementById('current-typing-indicator');
+                        if (currentIndicator) {
+                            currentIndicator.remove();
+                        }
+                        isKozyTyping = false;
+                        messageInput.disabled = false;
+                        sendButton.disabled = false;
+                        
+                        // Retry logic
+                        if (retryCount < MAX_RETRIES) {
+                            retryCount++;
+                            setTimeout(processNextMessage, 1000);
+                        } else {
+                            retryCount = 0;
+                            showStatus('Connection error. Please try again.');
+                        }
+                    });
             }
             
             // Event listeners

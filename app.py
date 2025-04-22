@@ -9,6 +9,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 import torch
 import re # Ensure re is imported at the top
 
+# Import our new modules
+from emotion_detector import detect_emotion, get_emotion_response_style, get_relevant_resources
+from knowledge_base import KnowledgeBase
+
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
@@ -39,20 +43,51 @@ except Exception as e:
     generator = None
     print("Using rule-based fallback responses")
 
+# Initialize knowledge base
+knowledge_base = KnowledgeBase()
+
+# Global counters for tracking conversation depth
+def initialize_user_tracking():
+    """Initialize or get the user tracking dictionary"""
+    if 'user_tracking' not in session:
+        session['user_tracking'] = {
+            'message_count': 0,
+            'detected_emotions': [],
+            'topics_discussed': [],
+            'unanswered_questions': 0,
+            'max_depth_topic': None
+        }
+    return session['user_tracking']
+
 def get_kozy_response(message, chat_history):
     """Generate better empathetic responses without prompt leakage"""
     
+    # Update tracking metrics to improve context
+    tracking = initialize_user_tracking()
+    tracking['message_count'] += 1
+    
+    # Detect emotion in the current message
+    detected_emotion = detect_emotion(message, chat_history)
+    if detected_emotion and detected_emotion != "neutral":
+        tracking['detected_emotions'].append(detected_emotion)
+        # Keep only the last 5 emotions
+        if len(tracking['detected_emotions']) > 5:
+            tracking['detected_emotions'] = tracking['detected_emotions'][-5:]
+    
     # If we couldn't load the model, use rule-based responses
     if generator is None:
-        return get_rule_based_response(message, chat_history)
+        return get_rule_based_response(message, chat_history, detected_emotion)
     
     try:
+        # Get emotion response style to guide the model
+        emotion_style = get_emotion_response_style(detected_emotion)
+        
         # Much simpler prompt strategy to avoid instruction leakage
         recent_exchanges = min(6, len(chat_history)) # Slightly more context
         recent_history = chat_history[-recent_exchanges:] if recent_exchanges > 0 else []
         
-        # IMPROVED PROMPT: Create a more directive prompt to ensure better topic handling
-        prompt_header = """You are Kozy, a deeply empathetic and insightful AI companion that excels at supportive conversation.
+        # IMPROVED PROMPT: Create a more directive prompt with emotion awareness
+        prompt_header = f"""You are Kozy, a deeply empathetic and insightful AI companion that excels at supportive conversation.
 
 IMPORTANT INSTRUCTIONS:
 1. ALWAYS acknowledge and address the specific topics the user mentions (like work issues, boss problems, conflicts with peers, etc.)
@@ -62,6 +97,9 @@ IMPORTANT INSTRUCTIONS:
 5. When the user mentions a new topic, make sure to address it directly
 6. If the user mentions a problem with their boss, workplace, peers, or conflicts, focus your response on that specific issue
 7. End with an open-ended question related to what they've just shared
+
+USER'S CURRENT EMOTION: {detected_emotion}
+RESPONSE STYLE: Use a {emotion_style['tone']} tone. {emotion_style['validation']}. {emotion_style['approach']}.
 
 CONVERSATION STYLE:
 - Be warm, thoughtful and genuine
@@ -483,7 +521,7 @@ Now, formulate your response as Kozy:
         print(f"Error generating response: {e}")
         return get_rule_based_response(message, chat_history)
 
-def get_rule_based_response(message, chat_history=None):
+def get_rule_based_response(message, chat_history=None, user_emotion=None):
     """Provide engaging, supportive responses with a mature, empathetic vibe"""
     # We don't need to re-import random here since we now have it globally
     
@@ -604,7 +642,7 @@ def create_chat_session(uid):
         return None
 
 def save_chat_to_firebase(uid, user_message, kozy_response):
-    """Save chat messages to the current session in Firebase"""
+    """Save chat messages to the current session in Firebase with emotion data"""
     try:
         today = datetime.now().strftime("%Y-%m-%d")
         
@@ -616,11 +654,17 @@ def save_chat_to_firebase(uid, user_message, kozy_response):
         # Generate a unique message ID based on timestamp
         message_id = str(datetime.now().timestamp()).replace(".", "_")
         
-        # Create chat message data
+        # Get emotion if available
+        user_emotion = None
+        if 'user_tracking' in session and 'detected_emotions' in session['user_tracking'] and session['user_tracking']['detected_emotions']:
+            user_emotion = session['user_tracking']['detected_emotions'][-1]
+        
+        # Create chat message data with emotion
         chat_data = {
             "user": user_message,
             "kozy": kozy_response,
-            "timestamp": datetime.now().strftime("%H:%M:%S")
+            "timestamp": datetime.now().strftime("%H:%M:%S"),
+            "emotion": user_emotion
         }
         
         # Save to the current session
@@ -689,50 +733,170 @@ def send_message():
     if not user_message:
         return jsonify({"error": "Empty message"}), 400
     
-    # Get current chat history
+    # Get current chat history and tracking info
     chat_history = get_session_history()
+    tracking = initialize_user_tracking()
     
     try:
+        # Detect emotion in the user's message
+        user_emotion = detect_emotion(user_message, chat_history)
+        
+        # Update tracking data with new emotion
+        if user_emotion != "neutral":
+            tracking['detected_emotions'].append(user_emotion)
+            if len(tracking['detected_emotions']) > 5:
+                tracking['detected_emotions'] = tracking['detected_emotions'][-5:]
+        
         # Check for special cases that need direct handling
         is_special, special_response = preprocess_user_message(user_message)
         if is_special:
             kozy_response = [special_response]  # Wrap in list for consistency
         else:
-            # Try the LLM first with enhanced error handling
+            # Try personality-driven response first with enhanced context awareness
             try:
-                kozy_response = get_kozy_response(user_message, chat_history)
+                # Track important conversation context
+                if 'important_context' not in session:
+                    session['important_context'] = {
+                        'achievements': [],
+                        'problems': [],
+                        'topics': {},
+                        'last_topic': None
+                    }
+                
+                # Extract important information from user message
+                achievement_keywords = ["promotion", "promoted", "new job", "cto", "ceo", "manager", "lead", "award", "success"]
+                problem_keywords = ["issue", "problem", "difficult", "hard", "struggle", "worried", "anxiety", "stress"]
+                
+                # Check for achievements or problems in current message
+                user_msg_lower = user_message.lower()
+                
+                # Check if the message mentions an achievement
+                for keyword in achievement_keywords:
+                    if keyword in user_msg_lower:
+                        if keyword not in session['important_context']['achievements']:
+                            session['important_context']['achievements'].append(keyword)
+                            session['important_context']['last_topic'] = 'achievement'
+                
+                # Check if the message mentions a problem
+                for keyword in problem_keywords:
+                    if keyword in user_msg_lower:
+                        if keyword not in session['important_context']['problems']:
+                            session['important_context']['problems'].append(keyword)
+                            session['important_context']['last_topic'] = 'problem'
+                
+                # Check if this is a follow-up to previous context
+                contextual_response = None
+                if len(chat_history) >= 2:
+                    last_exchange = chat_history[-1]
+                    # If the last message mentioned an achievement and this is a confirmation
+                    if (session['important_context']['last_topic'] == 'achievement' and 
+                        any(word in user_msg_lower for word in ["yes", "yeah", "correct", "right", "hard work", "hardwork", "work"])):
+                        
+                        achievement_responses = [
+                            "That's amazing! All those years of hard work have clearly paid off with your promotion to CTO. What aspect of the new role excites you the most?",
+                            "Your dedication really shows - becoming CTO is a huge accomplishment! What's the first thing you want to tackle in your new position?",
+                            "Congratulations again on becoming CTO! That kind of commitment deserves recognition. How have others reacted to your promotion?"
+                        ]
+                        contextual_response = [random.choice(achievement_responses)]
+                
+                # Track conversation turn for varying response styles
+                if 'conversation_turn' not in session:
+                    session['conversation_turn'] = 0
+                session['conversation_turn'] += 1
+                
+                # Use contextual response if available, otherwise generate normal response
+                if contextual_response:
+                    kozy_response = contextual_response
+                else:
+                    # Get app feature recommendation if appropriate
+                    suggested_feature = knowledge_base.get_app_feature(
+                        user_emotion, 
+                        user_message,
+                        chat_history
+                    )
+                    
+                    # Get emotion-appropriate personality response
+                    personality_response = knowledge_base.get_personality_response(
+                        user_message, 
+                        user_emotion, 
+                        suggested_feature,
+                        chat_history,
+                        important_context=session.get('important_context')  # Pass important context
+                    )
+                    
+                    # If we have a good personality response, use it
+                    if personality_response and len(personality_response) > 0:
+                        kozy_response = personality_response
+                    else:
+                        # Fall back to LLM or rule-based
+                        kozy_response = get_kozy_response(user_message, chat_history)
+                
                 # Debug: Print out the response type and content
                 print(f"Response type: {type(kozy_response)}")
                 print(f"Response content: {kozy_response}")
-            except Exception as llm_error:
-                print(f"LLM response generation failed: {str(llm_error)}")
-                # Don't fail immediately - try the rule-based response as backup
-                kozy_response = get_rule_based_response(user_message, chat_history)
-                print(f"Falling back to rule-based: {kozy_response}")
+                
+                # Check for message repetition pattern and avoid it
+                if chat_history and len(chat_history) >= 4:
+                    recent_kozy_msgs = []
+                    for entry in chat_history[-4:]:
+                        if isinstance(entry.get('kozy'), list) and len(entry['kozy']) > 0:
+                            recent_kozy_msgs.append(entry['kozy'][0])
+                        elif isinstance(entry.get('kozy'), str):
+                            recent_kozy_msgs.append(entry['kozy'])
+                    
+                    # Check if we're repeating the same message pattern
+                    if len(recent_kozy_msgs) > 3 and recent_kozy_msgs[0] == recent_kozy_msgs[2] and recent_kozy_msgs[1] == recent_kozy_msgs[3]:
+                        # We're in a repetition loop, force a different response
+                        print("Detected response repetition pattern, generating alternative response")
+                        
+                        # Use different emotion template to break pattern
+                        alternate_emotions = [e for e in ["happy", "sad", "neutral", "excited", "bored"] if e != user_emotion]
+                        alt_emotion = random.choice(alternate_emotions)
+                        kozy_response = knowledge_base.get_personality_response(
+                            user_message, 
+                            alt_emotion, 
+                            None,  # No feature suggestion in this case
+                            chat_history
+                        )
+                        
+                        # If still seems repetitive, use a completely different approach
+                        if isinstance(kozy_response, list) and len(kozy_response) > 0:
+                            if any(msg == kozy_response[0] for msg in recent_kozy_msgs):
+                                kozy_response = [
+                                    "I notice we might be going in circles a bit. Let's try a different approach.",
+                                    "What's one thing you'd like to talk about that we haven't discussed yet? I'm here to listen to anything that's on your mind."
+                                ]
+                
+                # Check for relevant FAQs that match the topic, append if appropriate
+                # But only do this occasionally to avoid being repetitive
+                if random.random() < 0.25:  # 25% chance to add FAQ
+                    relevant_faqs = knowledge_base.find_relevant_faq(
+                        user_message, 
+                        user_emotion, 
+                        chat_history
+                    )
+                    
+                    if relevant_faqs:
+                        faq = relevant_faqs[0]
+                        faq_msg = f"By the way, {faq['q']} {faq['a']}"
+                        
+                        if isinstance(kozy_response, list):
+                            # Insert the FAQ as the last message
+                            kozy_response.append(faq_msg)
+                        else:
+                            kozy_response = [kozy_response, faq_msg]
+                
+            except Exception as personality_error:
+                print(f"Personality response failed: {str(personality_error)}")
+                # Fall back to LLM response
+                kozy_response = get_kozy_response(user_message, chat_history)
             
             # Ensure we have a list response
             if not isinstance(kozy_response, list):
-                if kozy_response is None:
-                    # Better topic detection for fallback
-                    message_lower = user_message.lower()
-                    if any(term in message_lower for term in ["boss", "manager", "supervisor"]):
-                        kozy_response = [
-                            "I understand you're mentioning issues with your boss. That can be really challenging.",
-                            "Would you like to tell me more about what's happening with your manager? I'm here to listen and support you."
-                        ]
-                    elif any(term in message_lower for term in ["work", "job", "workload"]):
-                        kozy_response = [
-                            "It sounds like you're dealing with some work-related challenges. That can definitely be stressful.",
-                            "I'm here to listen if you'd like to talk more about what's happening at work."
-                        ]
-                    else:
-                        # Generic fallback that at least acknowledges we're listening
-                        kozy_response = ["I'm hearing what you're sharing. Would you like to tell me more about that? I'm here to listen and support you."]
-                else:
-                    kozy_response = [str(kozy_response)]
+                kozy_response = [str(kozy_response)]
         
         # --- Final Safety Check ---
-        unsafe_keywords = ["fight back", "hit them", "attack", "kill", "hurt them"] # Keep consistent
+        unsafe_keywords = ["fight back", "hit them", "attack", "kill", "hurt them"] 
         contains_unsafe_content = False
         if kozy_response and isinstance(kozy_response, list):
              # Check only the first message part for immediate safety issues
@@ -758,24 +922,25 @@ def send_message():
             # Store the remaining messages in the session for retrieval
             session['pending_messages'] = remaining_messages
             
-            # Option 2: Store the full list for better context
+            # Store the full list for better context
             full_kozy_response_for_history = kozy_response
-            chat_history.append({"user": user_message, "kozy": full_kozy_response_for_history, "timestamp": current_time})
+            chat_history.append({"user": user_message, "kozy": full_kozy_response_for_history, "timestamp": current_time, "emotion": user_emotion})
             save_chat_to_firebase(session['uid'], user_message, first_message)  # Save first message to Firebase
 
             session['chat_history'] = chat_history # Update session history
 
             return jsonify({
                 "response": first_message,
-                "has_more": len(remaining_messages) > 0
+                "has_more": len(remaining_messages) > 0,
+                "emotion": user_emotion
             })
         else:
             # Fallback response
             fallback = "I'm processing that. Tell me more about how you feel~"
-            chat_history.append({"user": user_message, "kozy": fallback})
+            chat_history.append({"user": user_message, "kozy": fallback, "emotion": user_emotion})
             session['chat_history'] = chat_history
             save_chat_to_firebase(session['uid'], user_message, fallback)
-            return jsonify({"response": fallback, "has_more": False})
+            return jsonify({"response": fallback, "has_more": False, "emotion": user_emotion})
             
     except Exception as e:
         # Log the error and return a friendly message
@@ -809,14 +974,21 @@ def get_next_message():
         
         # Save this message to chat history and Firebase
         chat_history = get_session_history()
-        chat_history.append({"user": "", "kozy": next_message})
+        
+        # Get user's current emotion if available
+        user_emotion = None
+        if 'user_tracking' in session and 'detected_emotions' in session['user_tracking'] and session['user_tracking']['detected_emotions']:
+            user_emotion = session['user_tracking']['detected_emotions'][-1]
+        
+        chat_history.append({"user": "", "kozy": next_message, "emotion": user_emotion})
         session['chat_history'] = chat_history
         save_chat_to_firebase(session['uid'], "", next_message)
         
         return jsonify({
             "response": next_message,
             "typing_delay": typing_delay,
-            "has_more": len(pending_messages) > 0
+            "has_more": len(pending_messages) > 0,
+            "emotion": user_emotion
         })
     except Exception as e:
         print(f"Error in get_next_message: {str(e)}")
